@@ -32,6 +32,8 @@ def get_root_src():
 
 def makedirs(dirname):
     if not os.path.exists(dirname):
+        print('[WARNING]: Making directory {}'.format(dirname))
+        # raise Exception("[ERROR]: Making directory {}".format(dirname))
         os.makedirs(dirname)
 
 def get_mesh_src():

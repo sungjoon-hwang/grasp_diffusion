@@ -65,7 +65,11 @@ def main(opt):
         device = torch.device('cpu')
 
     ## Dataset
-    train_dataset = datasets.PointcloudAcronymAndSDFDataset(augmented_rotation=True, one_object=args['single_object'])
+    train_dataset = datasets.PointcloudAcronymAndSDFDataset(
+        augmented_rotation=True,
+        one_object=args['single_object'],
+        class_type=['mug'],
+    )
     train_dataloader = DataLoader(train_dataset, batch_size=args['TrainSpecs']['batch_size'], shuffle=True, drop_last=True)
     test_dataset = copy.deepcopy(train_dataset)
     test_dataset.set_test_data()

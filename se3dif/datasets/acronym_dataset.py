@@ -286,7 +286,7 @@ class PointcloudAcronymAndSDFDataset(Dataset):
 
         self.grasp_files = []
         for class_type_i in class_type:
-            cls_grasps_files = sorted(glob.glob(self.grasps_dir+'/'+class_type_i+'/*.h5'))
+            cls_grasps_files = sorted(glob.glob(self.grasps_dir+'/'+class_type_i+'/train/*.h5'))
 
             for grasp_file in cls_grasps_files:
                 g_obj = AcronymGrasps(grasp_file)
