@@ -4,6 +4,8 @@ from scipy.spatial.transform import Rotation as R
 
 from se3dif.utils import to_numpy, to_torch
 from se3dif.datasets.acronym_dataset import AcronymGraspsDirectory
+from scripts.utils import dataset as ds
+
 import numpy as np
 import torch
 
@@ -55,8 +57,10 @@ class EvaluatePointConditionedGeneratedGrasps():
         return success_rate, edd_mean, edd_std
 
     def pointcloud_conditioning(self):
-        acronym_grasps = AcronymGraspsDirectory(data_type=self.obj_class)
-        mesh = acronym_grasps.avail_obj[self.obj_id].load_mesh()
+        # acronym_grasps = AcronymGraspsDirectory(data_type=self.obj_class)
+        grasps = ds.GraspDirectory(class_type=self.obj_class)
+        mesh = grasps.avail_obj[self.obj_id].load_mesh()
+
         P = mesh.sample(1000)
         P = to_torch(P, self.generator.device)
         rot = to_torch(R.from_quat(self.q).as_matrix(), self.generator.device)

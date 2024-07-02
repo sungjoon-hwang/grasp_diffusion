@@ -104,7 +104,8 @@ def main(opt):
         ])
 
     # Train
-    trainer.train(model=model.float(), train_dataloader=train_dataloader, epochs=args['TrainSpecs']['num_epochs'], model_dir= exp_dir,
+    trainer.train(model=model.float(), train_dataloader=train_dataloader,
+                epochs=args['TrainSpecs']['num_epochs'], model_dir= exp_dir,
                 summary_fn=summary, device=device, lr=1e-4, optimizers=[optimizer],
                 steps_til_summary=args['TrainSpecs']['steps_til_summary'],
                 epochs_til_checkpoint=args['TrainSpecs']['epochs_til_checkpoint'],

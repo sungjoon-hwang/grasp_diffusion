@@ -1,6 +1,6 @@
 import torch
 from se3dif.utils import directory_utils
-from isaacgym import gymapi, gymtorch
+# from isaacgym import gymapi, gymtorch
 import os, os.path as osp
 import numpy as np
 from scipy.spatial.transform import Rotation as R

@@ -1,5 +1,5 @@
-from isaacgym import gymapi, gymtorch
-from isaacgym import gymutil
+# from isaacgym import gymapi, gymtorch
+# from isaacgym import gymutil
 import math
 import time
 import os, os.path as osp
