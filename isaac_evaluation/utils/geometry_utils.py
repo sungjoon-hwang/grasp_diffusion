@@ -1,4 +1,4 @@
-from isaacgym import gymapi,gymtorch
+# from isaacgym import gymapi,gymtorch
 import torch
 import numpy as np
 from se3dif.utils import SO3_R3

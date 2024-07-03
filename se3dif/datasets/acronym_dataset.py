@@ -25,6 +25,10 @@ from mesh_to_sdf.scan import ScanPointcloud
 import os, sys
 
 import logging
+
+from scripts.utils import dataset as ds
+
+
 logger = logging.getLogger("trimesh")
 logger.setLevel(logging.ERROR)
 
@@ -256,7 +260,7 @@ class AcronymAndSDFDataset(Dataset):
                'x_ene_pos': torch.from_numpy(H_grasps).float(),
                'x_neg_ene': torch.from_numpy(H_bad_grasps).float(),
                'scale': torch.Tensor([self.scale]).float(),
-               'visual_context':  torch.Tensor([index_obj])}
+               'visual_context':  torch.Tensor([index_obj])} # maybe Z?
 
         return res, {'sdf': torch.from_numpy(sdf).float(), 'grad_sdf': torch.from_numpy(grad_sdf).float()}
 
@@ -283,13 +287,16 @@ class PointcloudAcronymAndSDFDataset(Dataset):
         self.data_dir = get_data_src()
 
         self.grasps_dir = os.path.join(self.data_dir, 'grasps')
+        self.meshes_dir = os.path.join(self.data_dir, 'objs')
 
         self.grasp_files = []
         for class_type_i in class_type:
-            cls_grasps_files = sorted(glob.glob(self.grasps_dir+'/'+class_type_i+'/*.h5'))
+            cls_grasps_files = sorted(glob.glob(
+                os.path.join(self.grasps_dir, class_type_i, 'train/*.h5')
+            ))
 
             for grasp_file in cls_grasps_files:
-                g_obj = AcronymGrasps(grasp_file)
+                g_obj = ds.GraspData(grasp_file)
 
                 ## Grasp File ##
                 if g_obj.good_grasps.shape[0] > 0:
@@ -334,24 +341,16 @@ class PointcloudAcronymAndSDFDataset(Dataset):
         return H_grasps
 
     def _get_sdf(self, grasp_obj, grasp_file):
+        # TODO: check dataset. loc & scale
 
-        mesh_fname = grasp_obj.mesh_fname
-        mesh_scale = grasp_obj.mesh_scale
+        samples = np.random.rand(1000, 3)
+        sdf = grasp_obj.get_signed_distance(samples)
 
-        mesh_type = mesh_fname.split('/')[1]
-        mesh_name = mesh_fname.split('/')[-1]
-        filename  = mesh_name.split('.obj')[0]
-        sdf_file = os.path.join(self.data_dir, 'sdf', mesh_type, filename+'.json')
-
-        with open(sdf_file, 'rb') as handle:
-            sdf_dict = pickle.load(handle)
-
-        loc = sdf_dict['loc']
-        scale = sdf_dict['scale']
-        xyz = (sdf_dict['xyz'] + loc)*scale*mesh_scale
+        xyz = samples
         rix = np.random.permutation(xyz.shape[0])
         xyz = xyz[rix[:self.n_occ], :]
-        sdf = sdf_dict['sdf'][rix[:self.n_occ]]*scale*mesh_scale
+        # sdf = sdf_dict['sdf'][rix[:self.n_occ]]*scale*mesh_scale
+        sdf = sdf[rix[:self.n_occ]]
         return xyz, sdf
 
     def _get_mesh_pcl(self, grasp_obj):
@@ -364,9 +363,9 @@ class PointcloudAcronymAndSDFDataset(Dataset):
 
         ## Load Files ##
         if self.type == 'train':
-            grasps_obj = AcronymGrasps(self.train_grasp_files[index])
+            grasps_obj = ds.GraspData(self.train_grasp_files[index])
         else:
-            grasps_obj = AcronymGrasps(self.test_grasp_files[index])
+            grasps_obj = ds.GraspData(self.test_grasp_files[index])
 
         ## SDF
         xyz, sdf = self._get_sdf(grasps_obj, self.train_grasp_files[index])

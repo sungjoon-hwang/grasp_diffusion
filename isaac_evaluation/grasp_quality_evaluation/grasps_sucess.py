@@ -1,4 +1,4 @@
-from isaacgym import *
+# from isaacgym import *
 import os, sys
 import numpy as np
 from se3dif.datasets import AcronymGraspsDirectory
@@ -7,6 +7,7 @@ from isaac_evaluation.grasp_sim.environments.grip_eval_env import GraspingGymEnv
 
 from se3dif.utils import to_numpy, to_torch
 from isaac_evaluation.utils.geometry_utils import pq_to_H, H_2_Transform
+from scripts.utils import dataset as ds
 import torch
 
 class GraspSuccessEvaluator():
@@ -14,7 +15,8 @@ class GraspSuccessEvaluator():
     def __init__(self, obj_class, n_envs = 10, idxs=None, viewer=True, device='cpu', rotations=None, enable_rel_trafo=True):
         self.device = device
         self.obj_class = obj_class
-        self.grasps_directory = AcronymGraspsDirectory(data_type=obj_class)
+        # self.grasps_directory = AcronymGraspsDirectory(data_type=obj_class)
+        self.grasps_directory = ds.GraspDirectory(class_type=obj_class)
         self.n_envs = n_envs
         self.rotations = rotations
         # This argument tells us if the grasp poses are relative w.r.t. the current object pose or not

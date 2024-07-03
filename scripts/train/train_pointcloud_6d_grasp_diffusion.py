@@ -65,7 +65,11 @@ def main(opt):
         device = torch.device('cpu')
 
     ## Dataset
-    train_dataset = datasets.PointcloudAcronymAndSDFDataset(augmented_rotation=True, one_object=args['single_object'])
+    train_dataset = datasets.PointcloudAcronymAndSDFDataset(
+        augmented_rotation=True,
+        one_object=args['single_object'],
+        class_type=['mug'],
+    )
     train_dataloader = DataLoader(train_dataset, batch_size=args['TrainSpecs']['batch_size'], shuffle=True, drop_last=True)
     test_dataset = copy.deepcopy(train_dataset)
     test_dataset.set_test_data()
@@ -100,7 +104,8 @@ def main(opt):
         ])
 
     # Train
-    trainer.train(model=model.float(), train_dataloader=train_dataloader, epochs=args['TrainSpecs']['num_epochs'], model_dir= exp_dir,
+    trainer.train(model=model.float(), train_dataloader=train_dataloader,
+                epochs=args['TrainSpecs']['num_epochs'], model_dir= exp_dir,
                 summary_fn=summary, device=device, lr=1e-4, optimizers=[optimizer],
                 steps_til_summary=args['TrainSpecs']['steps_til_summary'],
                 epochs_til_checkpoint=args['TrainSpecs']['epochs_til_checkpoint'],

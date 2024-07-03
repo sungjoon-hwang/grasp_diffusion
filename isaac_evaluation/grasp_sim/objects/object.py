@@ -1,7 +1,7 @@
 import numpy as np
 from isaac_evaluation.utils.geometry_utils import pq_to_H
 import os, os.path as osp
-from isaacgym import gymapi, gymtorch
+# from isaacgym import gymapi, gymtorch
 import copy
 from se3dif.datasets import AcronymGraspsDirectory
 from se3dif.utils import get_data_src
