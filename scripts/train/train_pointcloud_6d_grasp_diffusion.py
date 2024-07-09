@@ -75,8 +75,8 @@ def main(opt):
         batch_size=args['TrainSpecs']['batch_size'],
         shuffle=True,
         drop_last=True,
-        # num_workers=1,
-        # persistent_workers=True,
+        num_workers=1,
+        persistent_workers=True,
     )
     test_dataset = copy.deepcopy(train_dataset)
     test_dataset.set_test_data()
