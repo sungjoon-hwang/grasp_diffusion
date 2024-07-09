@@ -11,10 +11,10 @@ def parse_args():
 
     p.add_argument('--obj_id', type=int, default=0)
     p.add_argument('--n_grasps', type=str, default='200')
-    p.add_argument('--obj_class', type=str, default='Laptop')
+    p.add_argument('--obj_class', type=str, default='mug')
     p.add_argument('--device', type=str, default='cuda:0')
     p.add_argument('--eval_sim', type=bool, default=False)
-    p.add_argument('--model', type=str, default='grasp_dif_multi')
+    p.add_argument('--model', type=str, default='prototype')
 
 
     opt = p.parse_args()
@@ -39,8 +39,31 @@ def get_approximated_grasp_diffusion_field(p, args, device='cpu'):
 
     return generator, model
 
+def get_model(p, args, device='cpu'):
 
-def sample_pointcloud(obj_id=0, obj_class='Mug'):
+    model_params = args.model
+    batch = 100
+    ## Load model
+    model_args = {
+        'device': device,
+        'pretrained_model': model_params
+    }
+    model = load_model(model_args)
+
+    ## ????
+    context = to_torch(p[None, ...], device)
+    model.set_latent(context, batch=batch)
+    ##
+
+
+    ########### 2. SET SAMPLING METHOD #############
+    generator = Grasp_AnnealedLD(model, batch=batch, T=70, T_fit=50, k_steps=2, device=device)
+
+    return generator, model
+
+
+
+def sample_pointcloud(obj_id=0, obj_class='mug'):
     acronym_grasps = AcronymGraspsDirectory(data_type=obj_class)
     mesh = acronym_grasps.avail_obj[obj_id].load_mesh()
 
@@ -99,12 +122,15 @@ if __name__ == '__main__':
     n_grasps = int(args.n_grasps)
     obj_id = int(args.obj_id)
     obj_class = args.obj_class
-    n_envs = 30
+    n_envs = 20
     device = args.device
 
     ## Set Model and Sample Generator ##
     P, mesh, trans, rot_quad = sample_pointcloud(obj_id, obj_class)
-    generator, model = get_approximated_grasp_diffusion_field(P, args, device)
+
+    # generator, model = get_approximated_grasp_diffusion_field(P, args, device)
+    generator, model = get_model(P, args, device)
+
 
     H = generator.sample()
 
@@ -121,6 +147,8 @@ if __name__ == '__main__':
     P *=1/8
     mesh = mesh.apply_scale(1/8)
     grasp_visualization.visualize_grasps(to_numpy(H), p_cloud=P, mesh=mesh)
+
+    print("DONE")
 
     if (EVAL_SIMULATION):
         ## Evaluate Grasps in Simulation##
