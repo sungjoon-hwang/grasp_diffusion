@@ -82,7 +82,7 @@ class AcronymGrasps:
         return mesh
 
 class AcronymGraspsDirectory():
-    def __init__(self, filename=get_grasps_src(), data_type='Mug'):
+    def __init__(self, filename=get_grasps_src(), data_type=''):
         grasps_files = sorted(glob.glob(
             os.path.join(filename, data_type, 'train/*.h5')
         ))
@@ -263,7 +263,7 @@ class AcronymAndSDFDataset(Dataset):
 
 class PointcloudAcronymAndSDFDataset(Dataset):
     'DataLoader for training DeepSDF with a Rotation Invariant Encoder model'
-    def __init__(self, class_type=['mug'],
+    def __init__(self, class_type=[],
                  se3=False, phase='train', one_object=False,
                  n_pointcloud = 1000, n_density = 200, n_coords = 1000,
                  augmented_rotation=True, visualize=False, split = True):

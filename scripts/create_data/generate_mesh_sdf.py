@@ -16,7 +16,7 @@ import pyrender
 from se3dif.utils import makedirs
 
 DATA_FOLDER = 'data'
-OBJ_CLASSES = ['mug']
+OBJ_CLASSES = ['bowl', 'mug', 'bottle', 'laptop', 'cerealbox', 'hammer']
 
 #OBJ_CLASSES = ['Bottle']
 ## Set data folder
@@ -64,13 +64,13 @@ if __name__ == '__main__':
     import glob
 
     for obj_cls in OBJ_CLASSES:
-        grasp_dir = acronym_dataset.AcronymGraspsDirectory(data_type='mug')
+        grasp_dir = acronym_dataset.AcronymGraspsDirectory(data_type=obj_cls)
 
         count = 0
         for g_obj in grasp_dir.avail_obj:
             try:
                 count+=1
-                print(count)
+                print(f"obj_cls: {obj_cls}, count: {count}")
 
                 ## Load mesh
                 mesh_fname = g_obj.mesh_fname
@@ -86,10 +86,6 @@ if __name__ == '__main__':
                 loc = mesh.centroid
                 H[:-1, -1] = -loc
                 mesh.apply_transform(H)
-
-
-                print(mesh)
-
 
                 mesh_name = mesh_fname.split('/')[-1]
                 mesh_type = mesh_fname.split('/')[1]
