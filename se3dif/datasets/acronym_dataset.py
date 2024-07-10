@@ -4,8 +4,10 @@ import time
 
 import numpy as np
 import trimesh
+import open3d as o3d
 
 from scipy.stats import special_ortho_group
+import functools
 
 import os
 import torch
@@ -14,13 +16,15 @@ from torch.utils.data import DataLoader, Dataset
 import json
 import pickle
 import h5py
-from se3dif.utils import get_data_src
 
+from se3dif.utils import get_data_src
 from se3dif.utils import to_numpy, to_torch, get_grasps_src
 from mesh_to_sdf.surface_point_cloud import get_scan_view, get_hq_scan_view
 from mesh_to_sdf.scan import ScanPointcloud
-
-
+from pathlib import Path
+from mesh_to_sdf import sample_sdf_near_surface
+from se3dif.utils import directory_utils
+from braceexpand import braceexpand
 
 import os, sys
 
@@ -29,68 +33,83 @@ logger = logging.getLogger("trimesh")
 logger.setLevel(logging.ERROR)
 
 
-class AcronymGrasps():
-    def __init__(self, filename):
+def _glob(path):
+    if isinstance(path, Path):
+        path = str(path)
 
-        scale = None
-        if filename.endswith(".json"):
-            data = json.load(open(filename, "r"))
-            self.mesh_fname = data["object"].decode('utf-8')
-            self.mesh_type = self.mesh_fname.split('/')[1]
-            self.mesh_id = self.mesh_fname.split('/')[-1].split('.')[0]
-            self.mesh_scale = data["object_scale"] if scale is None else scale
-        elif filename.endswith(".h5"):
-            data = h5py.File(filename, "r")
-            self.mesh_fname = data["object/file"][()].decode('utf-8')
-            self.mesh_type = self.mesh_fname.split('/')[1]
-            self.mesh_id = self.mesh_fname.split('/')[-1].split('.')[0]
-            self.mesh_scale = data["object/scale"][()] if scale is None else scale
+    l = []
+    for x in braceexpand(path):
+        l.extend(glob.glob(x))
+    return l
+
+class AcronymGrasps:
+    def _get_mesh_fname(self):
+        if 'grasp_data/exp1_mbbchl' in self.path:
+            obj_dir = os.path.join(
+                directory_utils.get_data_src(),
+                'objs/*/train/*_visual.obj'
+            )
+
+            meshes = [f for f in _glob(obj_dir) if self.mesh_id in f]
+            assert len(meshes) == 1, 'multiple objects found'
+
+            return meshes[0].replace(directory_utils.get_data_src() + '/', '')
         else:
-            raise RuntimeError("Unknown file ending:", filename)
+            return f"objs/{self.mesh_type}/train/{self.mesh_id}_visual.obj"
 
-        self.grasps, self.success = self.load_grasps(filename)
-        good_idxs = np.argwhere(self.success==1)[:,0]
-        bad_idxs  = np.argwhere(self.success==0)[:,0]
-        self.good_grasps = self.grasps[good_idxs,...]
-        self.bad_grasps  = self.grasps[bad_idxs,...]
+    def __init__(self, path):
+        self.path = path
 
-    def load_grasps(self, filename):
-        """Load transformations and qualities of grasps from a JSON file from the dataset.
+        with h5py.File(path, 'r') as store:
+            self.pose = store['grasp'][...][:, :16].reshape(-1, 4, 4)
+            self.center = store.attrs['center']
 
-        Args:
-            filename (str): HDF5 or JSON file name.
+            # required for se3 diffusion paper
+            self.mesh_scale = store.attrs['scale']
+            self.mesh_id = store.attrs['fname']
+            self.mesh_type = str(path).split("/")[-3]
+            self.mesh_fname = self._get_mesh_fname()
 
-        Returns:
-            np.ndarray: Homogenous matrices describing the grasp poses. 2000 x 4 x 4.
-            np.ndarray: List of binary values indicating grasp success in simulation.
-        """
-        if filename.endswith(".json"):
-            data = json.load(open(filename, "r"))
-            T = np.array(data["transforms"])
-            success = np.array(data["quality_flex_object_in_gripper"])
-        elif filename.endswith(".h5"):
-            data = h5py.File(filename, "r")
-            T = np.array(data["grasps/transforms"])
-            success = np.array(data["grasps/qualities/flex/object_in_gripper"])
-        else:
-            raise RuntimeError("Unknown file ending:", filename)
-        return T, success
+            self.grasps, self.success = self.load_grasps()
+            good_idxs = np.argwhere(self.success == 1)[:, 0]
+            bad_idxs = np.argwhere(self.success == 0)[:, 0]
+            self.good_grasps = self.grasps[good_idxs, ...]
+            self.bad_grasps = self.grasps[bad_idxs, ...]
 
-    def load_mesh(self):
+    # def get_signed_distance(self, mesh: trimesh.Trimesh, samples: np.ndarray):
+    def get_signed_distance(self, samples: np.ndarray):
+        mesh = self.load_mesh()
+
+        scene = o3d.t.geometry.RaycastingScene()
+        scene.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(mesh.as_open3d))
+        dist = scene.compute_signed_distance(o3d.core.Tensor.from_numpy(samples.astype(np.float32))).numpy()
+        return dist
+
+    def load_grasps(self):
+        # T, success
+        # pose(grasp) is all success
+        return self.pose, np.ones(len(self.pose))
+
+    def get_mesh(self, *args, **kwargs) -> trimesh.Trimesh:
+        return self.load_mesh(*args, **kwargs)
+
+    def load_mesh(self) -> trimesh.Trimesh:
         mesh_path_file = os.path.join(get_data_src(), self.mesh_fname)
 
         mesh = trimesh.load(mesh_path_file,  file_type='obj', force='mesh')
-
+        mesh.apply_translation(-self.center)
         mesh.apply_scale(self.mesh_scale)
+
         if type(mesh) == trimesh.scene.scene.Scene:
             mesh = trimesh.util.concatenate(mesh.dump())
+
         return mesh
 
-
 class AcronymGraspsDirectory():
-    def __init__(self, filename=get_grasps_src(), data_type='Mug'):
-
-        grasps_files = sorted(glob.glob(filename + '/' + data_type + '/*.h5'))
+    def __init__(self, filename=get_grasps_src(), data_type=''):
+        grasps_files = sorted(glob.glob(
+            os.path.join(filename, data_type, 'train/*.h5')
+        ))
 
         self.avail_obj = []
         for grasp_file in grasps_files:
@@ -103,6 +122,7 @@ class AcronymAndSDFDataset(Dataset):
                  n_pointcloud = 1000, n_density = 200, n_coords = 1500,
                  augmented_rotation=True, visualize=False, split = True):
 
+        raise NotImplementedError("AcronymAndSDFDataset Not Implemented")
         self.class_type = class_type
         self.data_dir = get_data_src()
         self.acronym_data_dir = self.data_dir
@@ -267,26 +287,23 @@ class AcronymAndSDFDataset(Dataset):
 
 class PointcloudAcronymAndSDFDataset(Dataset):
     'DataLoader for training DeepSDF with a Rotation Invariant Encoder model'
-    def __init__(self, class_type=['Cup', 'Mug', 'Fork', 'Hat', 'Bottle', 'Bowl', 'Car', 'Donut', 'Laptop', 'MousePad', 'Pencil',
-                                   'Plate', 'ScrewDriver', 'WineBottle','Backpack', 'Bag', 'Banana', 'Battery', 'BeanBag', 'Bear',
-                                   'Book', 'Books', 'Camera','CerealBox', 'Cookie','Hammer', 'Hanger', 'Knife', 'MilkCarton', 'Painting',
-                                   'PillBottle', 'Plant','PowerSocket', 'PowerStrip', 'PS3', 'PSP', 'Ring', 'Scissors', 'Shampoo', 'Shoes',
-                                   'Sheep', 'Shower', 'Sink', 'SoapBottle', 'SodaCan','Spoon', 'Statue', 'Teacup', 'Teapot', 'ToiletPaper',
-                                   'ToyFigure', 'Wallet','WineGlass',
-                                   'Cow', 'Sheep', 'Cat', 'Dog', 'Pizza', 'Elephant', 'Donkey', 'RubiksCube', 'Tank', 'Truck', 'USBStick'],
+    def __init__(self, class_type=[],
                  se3=False, phase='train', one_object=False,
                  n_pointcloud = 1000, n_density = 200, n_coords = 1000,
                  augmented_rotation=True, visualize=False, split = True):
 
-        #class_type = ['Mug']
         self.class_type = class_type
         self.data_dir = get_data_src()
 
         self.grasps_dir = os.path.join(self.data_dir, 'grasps')
+        self.meshes_dir = os.path.join(self.data_dir, 'objs')
 
         self.grasp_files = []
         for class_type_i in class_type:
-            cls_grasps_files = sorted(glob.glob(self.grasps_dir+'/'+class_type_i+'/*.h5'))
+            ## Get Grasp File
+            cls_grasps_files = sorted(glob.glob(
+                os.path.join(self.grasps_dir, class_type_i, 'train/*.h5')
+            ))
 
             for grasp_file in cls_grasps_files:
                 g_obj = AcronymGrasps(grasp_file)
@@ -341,7 +358,11 @@ class PointcloudAcronymAndSDFDataset(Dataset):
         mesh_type = mesh_fname.split('/')[1]
         mesh_name = mesh_fname.split('/')[-1]
         filename  = mesh_name.split('.obj')[0]
-        sdf_file = os.path.join(self.data_dir, 'sdf', mesh_type, filename+'.json')
+        sdf_file = os.path.join(
+            directory_utils.get_sdf_src(),
+            mesh_type,
+            filename+'.json',
+        )
 
         with open(sdf_file, 'rb') as handle:
             sdf_dict = pickle.load(handle)
@@ -352,6 +373,41 @@ class PointcloudAcronymAndSDFDataset(Dataset):
         rix = np.random.permutation(xyz.shape[0])
         xyz = xyz[rix[:self.n_occ], :]
         sdf = sdf_dict['sdf'][rix[:self.n_occ]]*scale*mesh_scale
+
+        # (loc, scale) because applied when sdf is generated
+        # grasps obj AcrGrasp
+        # scale: obj file scale
+        # mesh_scale: grasps obj .h5 file
+        return xyz, sdf
+
+
+    def _get_sample_sdf_points(self, grasp_obj):
+        case = 0
+
+        if case == 0:
+            mesh = grasp_obj.load_mesh()
+
+            # NOTE: original code set it as 200000
+            q_sdf, pcl = sample_sdf_near_surface(mesh, number_of_points=1000)
+            query_points = q_sdf[0]
+        else:
+            query_points = np.random.rand(1000, 3)
+
+        return query_points
+
+    def _get_sdf_deprecated(self, grasp_obj, grasp_file):
+        query_points = self._get_sample_sdf_points(grasp_obj)
+
+        xyz = query_points
+        sdf = grasp_obj.get_signed_distance(query_points)
+
+        mesh_scale = grasp_obj.mesh_scale
+
+        xyz = xyz * mesh_scale
+        rix = np.random.permutation(xyz.shape[0])
+        xyz = xyz[rix[:self.n_occ], :]
+        sdf = sdf[rix[:self.n_occ]] * mesh_scale
+
         return xyz, sdf
 
     def _get_mesh_pcl(self, grasp_obj):
@@ -441,7 +497,7 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
                  se3=False, phase='train', one_object=False,
                  n_pointcloud = 1000, n_density = 200, n_coords = 1000,
                  augmented_rotation=True, visualize=False, split = True, test_files=None):
-
+        raise NotImplementedError("PPCL Not Implemented")
         self.class_type = class_type
         self.data_dir = get_data_src()
 

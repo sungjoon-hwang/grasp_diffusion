@@ -1,29 +1,20 @@
-# Object Classes :['Cup', 'Mug', 'Fork', 'Hat', 'Bottle', 'Bowl', 'Car', 'Donut', 'Laptop', 'MousePad', 'Pencil',
-# 'Plate', 'ScrewDriver', 'WineBottle','Backpack', 'Bag', 'Banana', 'Battery', 'BeanBag', 'Bear',
-# 'Book', 'Books', 'Camera','CerealBox', 'Cookie','Hammer', 'Hanger', 'Knife', 'MilkCarton', 'Painting',
-# 'PillBottle', 'Plant','PowerSocket', 'PowerStrip', 'PS3', 'PSP', 'Ring', 'Scissors', 'Shampoo', 'Shoes',
-# 'Sheep', 'Shower', 'Sink', 'SoapBottle', 'SodaCan','Spoon', 'Statue', 'Teacup', 'Teapot', 'ToiletPaper',
-# 'ToyFigure', 'Wallet','WineGlass','Cow', 'Sheep', 'Cat', 'Dog', 'Pizza', 'Elephant', 'Donkey', 'RubiksCube', 'Tank', 'Truck', 'USBStick']
+import copy
+import os
 
-def parse_args():
-    p = configargparse.ArgumentParser()
-    p.add('-c', '--config_filepath', required=False, is_config_file=True, help='Path to config file.')
+import configargparse
+import scipy.spatial.transform
+import numpy as np
+import torch
 
-    p.add_argument('--obj_id', type=int, default=0)
-    p.add_argument('--n_grasps', type=str, default='200')
-    p.add_argument('--obj_class', type=str, default='Laptop')
-    p.add_argument('--device', type=str, default='cuda:0')
-    p.add_argument('--eval_sim', type=bool, default=False)
-    p.add_argument('--model', type=str, default='grasp_dif_multi')
+from se3dif.datasets import AcronymGraspsDirectory, AcronymGrasps
+from se3dif.models.loader import load_model
+from se3dif.samplers import Grasp_AnnealedLD
+from se3dif.utils import to_numpy, to_torch
 
+def get_model(p, args, device='cpu'):
 
-    opt = p.parse_args()
-    return opt
-
-
-def get_approximated_grasp_diffusion_field(p, args, device='cpu'):
     model_params = args.model
-    batch = 10
+    batch = 100
     ## Load model
     model_args = {
         'device': device,
@@ -31,7 +22,8 @@ def get_approximated_grasp_diffusion_field(p, args, device='cpu'):
     }
     model = load_model(model_args)
 
-    context = to_torch(p[None,...], device)
+    # ????
+    context = to_torch(p[None, ...], device)
     model.set_latent(context, batch=batch)
 
     ########### 2. SET SAMPLING METHOD #############
@@ -40,9 +32,12 @@ def get_approximated_grasp_diffusion_field(p, args, device='cpu'):
     return generator, model
 
 
-def sample_pointcloud(obj_id=0, obj_class='Mug'):
-    acronym_grasps = AcronymGraspsDirectory(data_type=obj_class)
-    mesh = acronym_grasps.avail_obj[obj_id].load_mesh()
+
+def sample_pointcloud(h5_fpath):
+    # acronym_grasps = AcronymGraspsDirectory(data_type=obj_class)
+    # mesh = acronym_grasps.avail_obj[obj_id].load_mesh()
+    grasps = AcronymGrasps(h5_fpath)
+    mesh = grasps.load_mesh()
 
     P = mesh.sample(1000)
 
@@ -64,53 +59,44 @@ def sample_pointcloud(obj_id=0, obj_class='Mug'):
     mesh.apply_transform(H)
     translational_shift = copy.deepcopy(H)
 
-
-
     return P, mesh, translational_shift, rot_quat
 
+class Args:
+    def __init__(self, model='prototype', h5_fpath='path'):
+        self._model = model
+        self._h5_fpath = h5_fpath
+    @property
+    def model(self):
+        return self._model
 
-if __name__ == '__main__':
-    import copy
-    import configargparse
-    args = parse_args()
+    @property
+    def h5_fpath(self):
+        return self._h5_fpath
 
-    EVAL_SIMULATION = args.eval_sim
-    # isaac gym has to be imported here as it is supposed to be imported before torch
-    if (EVAL_SIMULATION):
-        # Alternatively: Evaluate Grasps in Simulation:
-        from isaac_evaluation.grasp_quality_evaluation import GraspSuccessEvaluator
+    @property
+    def device(self):
+        return 'cuda:0'
 
-    import scipy.spatial.transform
-    import numpy as np
-    from se3dif.datasets import AcronymGraspsDirectory
-    from se3dif.models.loader import load_model
-    from se3dif.samplers import ApproximatedGrasp_AnnealedLD, Grasp_AnnealedLD
-    from se3dif.utils import to_numpy, to_torch
-
-    import torch
+    def __getitem__(self, item):
+        return self.__dict__[item]
 
 
-
-    print('##########################################################')
-    print('Object Class: {}'.format(args.obj_class))
-    print(args.obj_id)
-    print('##########################################################')
-
-    n_grasps = int(args.n_grasps)
-    obj_id = int(args.obj_id)
-    obj_class = args.obj_class
-    n_envs = 30
+def generate_pcl_6d_grasp_poses(args):
     device = args.device
+    h5_fpath = args.h5_fpath
 
     ## Set Model and Sample Generator ##
-    P, mesh, trans, rot_quad = sample_pointcloud(obj_id, obj_class)
-    generator, model = get_approximated_grasp_diffusion_field(P, args, device)
+    P, mesh, trans, rot_quad = sample_pointcloud(h5_fpath)
+
+    # generator, model = get_approximated_grasp_diffusion_field(P, args, device)
+    generator, model = get_model(P, args, device)
+
 
     H = generator.sample()
 
     H_grasp = copy.deepcopy(H)
     # counteract the translational shift of the pointcloud (as the spawned model in simulation will still have it)
-    H_grasp[:, :3, -1] = (H_grasp[:, :3, -1] - torch.as_tensor(trans[:3,-1],device=device)).float()
+    H_grasp[:, :3, -1] = (H_grasp[:, :3, -1] - torch.as_tensor(trans[:3,-1], device=device)).float()
     H[..., :3, -1] *=1/8.
     H_grasp[..., :3, -1] *=1/8.
 
@@ -122,10 +108,11 @@ if __name__ == '__main__':
     mesh = mesh.apply_scale(1/8)
     grasp_visualization.visualize_grasps(to_numpy(H), p_cloud=P, mesh=mesh)
 
-    if (EVAL_SIMULATION):
-        ## Evaluate Grasps in Simulation##
-        num_eval_envs = 10
-        evaluator = GraspSuccessEvaluator(obj_class, n_envs=num_eval_envs, idxs=[args.obj_id] * num_eval_envs, viewer=True, device=device, \
-                                          rotations=[rot_quad]*num_eval_envs, enable_rel_trafo=False)
-        succes_rate = evaluator.eval_set_of_grasps(H_grasp)
-        print('Success cases : {}'.format(succes_rate))
+    print("DONE")
+
+if __name__ == '__main__':
+    args = Args(
+        model='prototype',
+        h5_fpath=f"{os.getenv('HOME')}/se3-diffusion/data/grasp_data/exp1_mbbchl/train/0aff119e6ce54c1db35b1608c6c1d567.h5",
+    )
+    generate_pcl_6d_grasp_poses(args)
