@@ -16,14 +16,15 @@ from torch.utils.data import DataLoader, Dataset
 import json
 import pickle
 import h5py
-from se3dif.utils import get_data_src
 
+from se3dif.utils import get_data_src
 from se3dif.utils import to_numpy, to_torch, get_grasps_src
 from mesh_to_sdf.surface_point_cloud import get_scan_view, get_hq_scan_view
 from mesh_to_sdf.scan import ScanPointcloud
 from pathlib import Path
 from mesh_to_sdf import sample_sdf_near_surface
 from se3dif.utils import directory_utils
+from braceexpand import braceexpand
 
 import os, sys
 
@@ -32,9 +33,32 @@ logger = logging.getLogger("trimesh")
 logger.setLevel(logging.ERROR)
 
 
+def _glob(path):
+    if isinstance(path, Path):
+        path = str(path)
+
+    l = []
+    for x in braceexpand(path):
+        l.extend(glob.glob(x))
+    return l
+
 class AcronymGrasps:
+    def _get_mesh_fname(self):
+        if 'grasp_data/exp1_mbbchl' in self.path:
+            obj_dir = os.path.join(
+                directory_utils.get_data_src(),
+                'objs/*/train/*_visual.obj'
+            )
+
+            meshes = [f for f in _glob(obj_dir) if self.mesh_id in f]
+            assert len(meshes) == 1, 'multiple objects found'
+
+            return meshes[0].replace(directory_utils.get_data_src() + '/', '')
+        else:
+            return f"objs/{self.mesh_type}/train/{self.mesh_id}_visual.obj"
+
     def __init__(self, path):
-        base_dir: str = Path(path).parents[3]  # data/
+        self.path = path
 
         with h5py.File(path, 'r') as store:
             self.pose = store['grasp'][...][:, :16].reshape(-1, 4, 4)
@@ -44,7 +68,7 @@ class AcronymGrasps:
             self.mesh_scale = store.attrs['scale']
             self.mesh_id = store.attrs['fname']
             self.mesh_type = str(path).split("/")[-3]
-            self.mesh_fname = f"objs/{self.mesh_type}/train/{self.mesh_id}_visual.obj"
+            self.mesh_fname = self._get_mesh_fname()
 
             self.grasps, self.success = self.load_grasps()
             good_idxs = np.argwhere(self.success == 1)[:, 0]
@@ -268,7 +292,6 @@ class PointcloudAcronymAndSDFDataset(Dataset):
                  n_pointcloud = 1000, n_density = 200, n_coords = 1000,
                  augmented_rotation=True, visualize=False, split = True):
 
-        #class_type = ['Mug']
         self.class_type = class_type
         self.data_dir = get_data_src()
 
