@@ -38,6 +38,7 @@ def parse_args():
 
     p.add_argument('--device',  type=str, default='cuda',)
     p.add_argument('--class_type', type=str, default='Mug')
+    p.add_argument('--pretrained_model', type=str)
 
     opt = p.parse_args()
     return opt
@@ -91,6 +92,10 @@ def main(opt):
 
     ## Model
     args['device'] = device
+    if opt.pretrained_model:
+        print(f"Loading pretrained model: {opt.pretrained_model}")
+        args['pretrained_model'] = opt.pretrained_model
+
     model = loader.load_model(args)
 
     # Losses
