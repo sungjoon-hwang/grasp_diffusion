@@ -67,7 +67,7 @@ def main(opt):
 
     ## Dataset
     train_dataset = datasets.PointcloudAcronymAndSDFDataset(
-        class_type=['bowl', 'mug', 'bottle', 'laptop', 'cerealbox', 'hammer'],
+        class_type=['bottle', 'bowl', 'cerealbox', 'hammer', 'laptop', 'mug'],
         augmented_rotation=True,
         one_object=args['single_object']
     )

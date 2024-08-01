@@ -61,7 +61,6 @@ class AcronymGrasps:
         self.path = path
 
         with h5py.File(path, 'r') as store:
-            self.pose = store['grasp'][...][:, :16].reshape(-1, 4, 4)
             self.center = store.attrs['center']
 
             # required for se3 diffusion paper
@@ -70,11 +69,14 @@ class AcronymGrasps:
             self.mesh_type = str(path).split("/")[-3]
             self.mesh_fname = self._get_mesh_fname()
 
-            self.grasps, self.success = self.load_grasps()
-            good_idxs = np.argwhere(self.success == 1)[:, 0]
-            bad_idxs = np.argwhere(self.success == 0)[:, 0]
-            self.good_grasps = self.grasps[good_idxs, ...]
-            self.bad_grasps = self.grasps[bad_idxs, ...]
+            # self.grasps, self.success = self.load_grasps()
+            self.grasps = store['poses'][...]
+            self.success = store['pose_labels'][...] == 0
+
+            self.good_idxs = np.argwhere(self.success == 1)[:, 0]
+            self.bad_idxs = np.argwhere(self.success == 0)[:, 0]
+            self.good_grasps = self.grasps[self.good_idxs, ...]
+            self.bad_grasps = self.grasps[self.bad_idxs, ...]
 
     # def get_signed_distance(self, mesh: trimesh.Trimesh, samples: np.ndarray):
     def get_signed_distance(self, samples: np.ndarray):
@@ -86,9 +88,10 @@ class AcronymGrasps:
         return dist
 
     def load_grasps(self):
+        raise RuntimeError("Deprecated")
         # T, success
         # pose(grasp) is all success
-        return self.pose, np.ones(len(self.pose))
+        # return self.pose, np.ones(len(self.pose))
 
     def get_mesh(self, *args, **kwargs) -> trimesh.Trimesh:
         return self.load_mesh(*args, **kwargs)

@@ -16,7 +16,7 @@ import pyrender
 from se3dif.utils import makedirs
 
 DATA_FOLDER = 'data'
-OBJ_CLASSES = ['bowl', 'mug', 'bottle', 'laptop', 'cerealbox', 'hammer']
+OBJ_CLASSES = ['bottle', 'bowl', 'cerealbox', 'hammer', 'laptop', 'mug']
 
 #OBJ_CLASSES = ['Bottle']
 ## Set data folder
@@ -26,7 +26,7 @@ data_folder = os.path.join(root_folder, DATA_FOLDER)
 grasps_folder = os.path.join(data_folder, 'grasps')
 meshes_folder = os.path.join(data_folder, 'meshes')
 sdf_folder = os.path.join(data_folder, 'sdf')
-makedirs(sdf_folder)
+# makedirs(sdf_folder)
 
 
 ## Copied from mesh_to_sdf
